@@ -1,126 +1,66 @@
 import os
 import asyncio
-import logging
 import re
 import yaml
 import torch
 import numpy as np
 import gradio as gr
-from functools import lru_cache
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from pinecone import Pinecone
 from pathlib import Path
 from dotenv import load_dotenv
-from typing import Dict
-
-# === LOGGING ===
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # === CONFIG LOAD ===
 CONFIG_PATH = Path(__file__).resolve().parent / "config.yaml"
-def load_config() -> Dict:
-    try:
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    except Exception as e:
-        logger.error(f"Konfigürasyon dosyası yüklenemedi: {e}")
-        return {
-            "pinecone": {"top_k": 10, "rerank_top": 5, "batch_size": 32},
-            "model": {"max_new_tokens": 50, "temperature": 0.7},
-            "cache": {"maxsize": 100}
-        }
+def load_config():
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
 config = load_config()
 
-# === LOAD ENV ===
+# === ENV LOAD ===
 env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
+
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENV = os.getenv("PINECONE_ENVIRONMENT")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
-
+if not all([PINECONE_API_KEY, PINECONE_ENV, PINECONE_INDEX_NAME]):
+    raise ValueError("Pinecone ortam değişkenleri eksik!")
 
 # === PINECONE CONNECT ===
 pinecone_client = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
-try:
-    index = pinecone_client.Index(PINECONE_INDEX_NAME)
-    index_stats = index.describe_index_stats()
-    logger.info(f"Pinecone index stats: {index_stats}")
-except Exception as e:
-    logger.error(f"Pinecone bağlantı hatası: {e}")
-    raise
+index = pinecone_client.Index(PINECONE_INDEX_NAME)
 
 # === MODEL LOAD ===
 MODEL_PATH = "iamseyhmus7/GenerationTurkishGPT2_final"
-try:
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
-    model = AutoModelForCausalLM.from_pretrained(MODEL_PATH)
-    tokenizer.pad_token = tokenizer.eos_token
-    model.config.pad_token_id = tokenizer.pad_token_id
-    model.eval()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    logger.info(f"Model {MODEL_PATH} Hugging Face Hub'dan yüklendi, cihaz: {device}")
-except Exception as e:
-    logger.error(f"Model yükleme hatası: {e}")
-    raise
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+model = AutoModelForCausalLM.from_pretrained(MODEL_PATH)
+tokenizer.pad_token = tokenizer.eos_token
+model.config.pad_token_id = tokenizer.pad_token_id
+model.eval()
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
 
-
-# === EMBEDDING MODELS ===
 embedder = SentenceTransformer("intfloat/multilingual-e5-large", device="cpu")
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cpu")
-logger.info("Embedding ve reranking modelleri yüklendi")
-
-# === FASTAPI ===
-app = FastAPI()
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-
-class QuestionRequest(BaseModel):
-    query: str
 
 def clean_text_output(text: str) -> str:
-    """
-    Tüm prompt, komut, yönerge, link ve gereksiz açıklamaları temizler.
-    Sadece net, kısa yanıtı bırakır.
-    """
-    # Modelin başındaki yönerge/talimat cümleleri
-    text = re.sub(
-        r"^(Sadece doğru, kısa ve açık bilgi ver\.? Ekstra açıklama veya kaynak ekleme\.?)", 
-        "", text, flags=re.IGNORECASE
-    )
-    # Büyük prompt ve yönergeleri sil (Metin:, output:, Cevap:)
+    # ... Aynı şekilde bırakabilirsin ...
+    text = re.sub(r"^(Sadece doğru, kısa ve açık bilgi ver\.? Ekstra açıklama veya kaynak ekleme\.?)", "", text, flags=re.IGNORECASE)
     text = re.sub(r"^.*?(Metin:|output:|Cevap:)", "", text, flags=re.IGNORECASE | re.DOTALL)
-    # Tek satırlık açıklama veya yönerge kalanlarını sil
     text = re.sub(r"^(Aşağıdaki haber.*|Yalnızca olay özeti.*|Cevapta sadece.*|Metin:|output:|Cevap:)", "", text, flags=re.IGNORECASE | re.MULTILINE)
-    # 'Detaylı bilgi için', 'Daha fazla bilgi için', 'Wikipedia', 'Kaynak:', linkler vs.
     text = re.sub(r"(Detaylı bilgi için.*|Daha fazla bilgi için.*|Wikipedia.*|Kaynak:.*|https?://\S+)", "", text, flags=re.IGNORECASE)
-    # Madde işaretleri ve baştaki sayı/karakterler
     text = re.sub(r"^\- ", "", text, flags=re.MULTILINE)
     text = re.sub(r"^\d+[\.\)]?\s+", "", text, flags=re.MULTILINE)
-    ## Model promptlarının başında kalan talimat cümlelerini sil
-    text = re.sub(
-        r"^(Sadece doğru, kısa ve açık bilgi ver\.? Ekstra açıklama veya kaynak ekleme\.?)", 
-        "", text, flags=re.IGNORECASE
-    )
-    # Tekrarlı boşluklar ve baş/son boşluk
     text = re.sub(r"\s+", " ", text).strip()
     return text
 
-@lru_cache(maxsize=config["cache"]["maxsize"])
 def get_embedding(text: str, max_length: int = 512) -> np.ndarray:
     formatted = f"query: {text.strip()}"[:max_length]
     return embedder.encode(formatted, normalize_embeddings=True)
 
-@lru_cache(maxsize=32)
-def pinecone_query_cached(query: str, top_k: int) -> tuple:
+def pinecone_query(query: str, top_k: int) -> list:
     query_embedding = get_embedding(query)
     result = index.query(vector=query_embedding.tolist(), top_k=top_k, include_metadata=True)
     matches = result.get("matches", [])
@@ -130,11 +70,11 @@ def pinecone_query_cached(query: str, top_k: int) -> tuple:
         url = m.get("metadata", {}).get("url", "")
         if text:
             output.append((text, url))
-    return tuple(output)
+    return output
 
-async def retrieve_sources_from_pinecone(query: str, top_k: int = None) -> Dict[str, any]:
+async def retrieve_sources_from_pinecone(query: str, top_k: int = None):
     top_k = top_k or config["pinecone"]["top_k"]
-    output = pinecone_query_cached(query, top_k)
+    output = pinecone_query(query, top_k)
     if not output:
         return {"sources": "", "results": [], "source_url": ""}
     # Cross-encoder ile yeniden sıralama
@@ -149,8 +89,7 @@ async def retrieve_sources_from_pinecone(query: str, top_k: int = None) -> Dict[
 
 async def generate_model_response(question: str) -> str:
     prompt = (
-        f"input: {question}\noutput:"
-        "Sadece doğru, kısa ve açık bilgi ver. Ekstra açıklama veya kaynak ekleme."
+        f"input: {question}\noutput:" "Sadece doğru, kısa ve açık bilgi ver. Ekstra açıklama veya kaynak ekleme."
     )
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(device)
     with torch.no_grad():
@@ -168,11 +107,9 @@ async def generate_model_response(question: str) -> str:
     return answer
 
 def extract_self_answer(output: str) -> str:
-    # Eğer "output:" etiketi varsa, sonrasını al
     match = re.search(r"output:(.*)", output, flags=re.IGNORECASE | re.DOTALL)
     if match:
         return match.group(1).strip()
-    # Eğer "Cevap:" varsa, sonrasını al
     if "Cevap:" in output:
         return output.split("Cevap:")[-1].strip()
     return output.strip()
@@ -187,7 +124,7 @@ async def selfrag_agent(question: str):
     model_paragraph = await generate_model_response(question)
     model_paragraph = extract_self_answer(model_paragraph)
 
-    # 3. Temizle (SADECE METİN DEĞERLERİNDE!)
+    # 3. Temizle
     vdb_paragraph = clean_text_output(vdb_paragraph)
     model_paragraph = clean_text_output(model_paragraph)
 
@@ -234,13 +171,14 @@ async def selfrag_agent(question: str):
         "source_url": final_source_url
     }
 
-
 def gradio_chat(message, history):
-    # ... burada selfrag_agent_sync çağrısı olacak ...
-    import time
-    time.sleep(1)  # Sadece örnek animasyon için
-    result = {"answer": "Bu bir örnek cevaptır. \n\n[Daha fazla bilgi için tıkla](https://example.com)", "source_url": "https://example.com"}
-    response = result["answer"]
+    try:
+        result = asyncio.run(selfrag_agent(message))
+        response = result["answer"]
+        if result.get("source_url"):
+            response += f"\n\n[Daha fazla bilgi için tıkla]({result['source_url']})"
+    except Exception as e:
+        response = f"Hata oluştu: {e}"
     history = history + [[message, response]]
     return "", history
 
@@ -265,18 +203,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
                 send_btn = gr.Button("Gönder")
                 clear = gr.Button("Sohbeti Temizle")
         with gr.Column(scale=1):
-            gr.Markdown("#### Son Eklenen Haberler")  # Buraya dilersen VDB'den başlık çekebilirsin
+            gr.Markdown("#### Son Eklenen Haberler")  # İstersen burayı dinamik yapabilirsin
             haberler = gr.Markdown("• Haber başlığı 1\n• Haber başlığı 2\n• Haber başlığı 3")
-    status = gr.Markdown("")
-
-    def user_ask(message, history):
-        status.update("Cevap hazırlanıyor... ⏳")
-        answer = gradio_chat(message, history)
-        status.update("")  # Temizle
-        return answer
-
-    msg.submit(user_ask, [msg, chatbot], [msg, chatbot])
-    send_btn.click(user_ask, [msg, chatbot], [msg, chatbot])
+    msg.submit(gradio_chat, [msg, chatbot], [msg, chatbot])
+    send_btn.click(gradio_chat, [msg, chatbot], [msg, chatbot])
     clear.click(lambda: None, None, chatbot, queue=False)
-
 demo.launch()
