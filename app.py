@@ -38,15 +38,13 @@ def load_config() -> Dict:
         }
 config = load_config()
 
-# === ENV LOAD ===
-env_path = Path(__file__).resolve().parent.parent / "RAG" / ".env"
+# === LOAD ENV ===
+env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
-
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENV = os.getenv("PINECONE_ENVIRONMENT")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
-if not all([PINECONE_API_KEY, PINECONE_ENV, PINECONE_INDEX_NAME]):
-    raise ValueError("Pinecone ortam değişkenleri eksik!")
+
 
 # === PINECONE CONNECT ===
 pinecone_client = Pinecone(api_key=PINECONE_API_KEY, environment=PINECONE_ENV)
