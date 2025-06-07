@@ -1,0 +1,24 @@
+# Pinecone Arama Ayarları
+pinecone:
+  top_k: 10                   # İlk aşamada getirilecek maksimum kaynak sayısı
+  rerank_top: 5              # Yeniden sıralamadan sonra seçilecek kaynak sayısı
+  batch_size: 32             # Cross-encoder için batch boyutu
+
+# Model Üretim Ayarları
+model:
+  max_new_tokens: 124        # Maksimum üretilecek token sayısı
+  temperature: 0.7           # Yaratıcılık seviyesi (0-1 arası)
+  top_p: 0.9                 # Nucleus sampling parametresi
+  top_k: 50                  # Top-k sampling parametresi
+  repetition_penalty: 1.2    # Tekrar ceza katsayısı
+
+# Önbellek Ayarları
+cache:
+  maxsize: 100               # LRU cache maksimum boyutu
+  ttl: 300                   # Önbellek ömrü (saniye)
+
+# İsteğe Bağlı Gelişmiş Ayarlar
+advanced:
+  enable_fallback: true       # Kaynak yoksa fallback mekanizmasını aktif et
+  truncate_sources: true     # Kaynakları otomatik kısalt
+  log_level: "INFO"          # Log seviyesi (DEBUG, INFO, WARNING, ERROR)
