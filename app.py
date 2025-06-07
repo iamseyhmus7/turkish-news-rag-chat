@@ -114,6 +114,15 @@ def extract_self_answer(output: str) -> str:
         return output.split("Cevap:")[-1].strip()
     return output.strip()
 
+def cut_at_last_period(text):
+    """Metni son noktaya kadar keser, sonrasında kalan eksik cümleleri atar."""
+    last_period = text.rfind(".")
+    if last_period != -1:
+        return text[:last_period+1].strip()
+    return text.strip()
+
+# ... (devamı aynı)
+
 async def selfrag_agent(question: str):
     # 1. VDB cevabı ve kaynak url
     result = await retrieve_sources_from_pinecone(question)
@@ -127,6 +136,11 @@ async def selfrag_agent(question: str):
     # 3. Temizle
     vdb_paragraph = clean_text_output(vdb_paragraph)
     model_paragraph = clean_text_output(model_paragraph)
+
+    # --- NOKTA KONTROLÜ EKLENDİ ---
+    vdb_paragraph = cut_at_last_period(vdb_paragraph)
+    model_paragraph = cut_at_last_period(model_paragraph)
+    # -----------------------------
 
     # 4. Cross-encoder ile skorlama
     candidates = []
@@ -154,17 +168,19 @@ async def selfrag_agent(question: str):
     if len(scores) == 2:
         vdb_score = scores[0]
         model_score = scores[1]
-        # Eğer modelin skoru, VDB'nin 2 katından fazlaysa modeli döndür
         if model_score > 1.5 * vdb_score:
             best_idx = 1
         else:
             best_idx = 0
     else:
-        # Sadece VDB veya model varsa, en yüksek skoru seç
         best_idx = int(np.argmax(scores))
 
     final_answer = candidates[best_idx]
     final_source_url = candidate_urls[best_idx]
+
+    # --- SON NOKTA KONTROLÜ FINAL CEVAPTA DA ---
+    final_answer = cut_at_last_period(final_answer)
+    # -------------------------------------------
 
     return {
         "answer": final_answer,
