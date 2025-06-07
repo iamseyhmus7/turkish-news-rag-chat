@@ -190,7 +190,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             <h1 style='margin-bottom: 0'>Türkçe Son Dakika RAG Chatbot</h1>
         </div>
         <p style='font-size: 18px; color: #666; margin-top:0'>
-            🚀 Hem genel bilgi, hem en güncel haberleri RAG teknolojisiyle birleştiren asistan.<br>
+             Hem genel bilgi, hem en güncel haberleri RAG teknolojisiyle birleştiren asistan.<br>
             İstediğini sor, canlı haberlere ulaş!
         </p>
         """
