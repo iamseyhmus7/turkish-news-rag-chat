@@ -2,7 +2,7 @@ gradio
 torch
 transformers
 sentence-transformers
-pinecone-client
+pinecone
 scikit-learn
 pyyaml
 python-dotenv
