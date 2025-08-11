@@ -47,3 +47,17 @@ prompt = "Yapay zekâ gelecekte hayatımızı nasıl etkileyecek?"
 output = pipe(prompt, max_new_tokens=128)
 print(output[0]['generated_text'])
 
+# Örnek 1: Son dakika deprem haberi
+q1 = {"query": "Son dakika: İstanbul'da deprem oldu mu? En güncel veriler nedir?"}
+r1 = requests.post(SPACE_API, json=q1, timeout=60)
+print("RAG Yanıtı (Deprem):", r1.json().get("answer"))
+
+# Örnek 2: Ekonomiyle ilgili son gelişmeler
+q2 = {"query": "Merkez Bankası faiz kararına dair en son haberler neler?"}
+r2 = requests.post(SPACE_API, json=q2, timeout=60)
+print("RAG Yanıtı (Ekonomi):", r2.json().get("answer"))
+
+# Örnek 3: Spor gündemi
+q3 = {"query": "Fenerbahçe'nin son transfer haberleri nedir?"}
+r3 = requests.post(SPACE_API, json=q3, timeout=60)
+print("RAG Yanıtı (Spor):", r3.json().get("answer"))
