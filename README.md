@@ -10,17 +10,27 @@ Canlı olarak denemek için [🌐 Hugging Face Space - RAG News Chatbot](https:/
 - **multilingual-e5-large** modeli ile embedding işlemleri
 - Fine-tuned GPT-2 ile doğal ve bağlama uygun cevaplar
 - Web tabanlı sohbet arayüzü (Hugging Face Spaces üzerinde)
+- **Docker ile tam otomasyon** – Her saat başı haber sitelerinden yeni verilerin otomatik çekilmesi, işlenmesi ve Pinecone’a aktarılması
 
 ## 📂 Veri Kaynakları
-- Haberler, belirli aralıklarla seçili Türkçe haber sitelerinden otomatik olarak çekilmektedir
-- Metinler embedding sonrası Pinecone’a aktarılmaktadır
-- RAG mekanizması ile hem **veritabanı** hem **LLM** bilgisi kullanılır
+- Haberler, **Docker tabanlı zamanlayıcı** ile her saat başı seçili Türkçe haber sitelerinden otomatik olarak çekilmektedir
+- Çekilen metinler embedding işleminden geçirilerek Pinecone vektör veritabanına kaydedilir
+- RAG mekanizması ile hem **güncel haber verisi** hem de **model bilgisi** birlikte kullanılır
 
 ## 🛠️ Teknik Detaylar
 - **Embedding Modeli:** `intfloat/multilingual-e5-large`
 - **Dil Modeli:** Fine-tuned `ytu-ce-cosmos/turkish-gpt2-large`
 - **Vektör Veritabanı:** Pinecone
 - **Çalışma Ortamı:** Hugging Face Spaces (Gradio tabanlı arayüz)
+- **Otomasyon:** Docker container üzerinde çalışan scraper ve pipeline süreçleri
+- **Veri Çekme Sıklığı:** Saatte bir (cron tabanlı otomasyon)
+
+## 🐳 Docker Kullanımı
+Projede Docker kullanılarak hem veri toplama hem de embedding + vektör veritabanı işlemleri tamamen otomatikleştirilmiştir.  
+Bu sayede:
+- Sistem her yeniden başlatıldığında kendini otomatik olarak çalıştırır
+- Haber verileri düzenli olarak güncellenir
+- Yerel ortam fark etmeksizin aynı yapı çalıştırılabilir
 
 ## 📦 Kullanım
 ### Hugging Face ile
